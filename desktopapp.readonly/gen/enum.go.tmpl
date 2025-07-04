@@ -1,0 +1,123 @@
+// Copyright (c) 1998-2025 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+{{$info := . -}}
+{{$name := toIdentifier .Name -}}
+package {{fileLeaf .Pkg}}
+
+import (
+    "strings"
+    {{- if .NeedI18N}}
+
+	"github.com/richardwilkes/toolbox/i18n"{{end}}
+	{{if .HasOldKeys}}"github.com/richardwilkes/toolbox/txt"{{end}}
+)
+
+// Possible values.
+const (
+	{{- range $i, $one := .Values}}
+	{{$info.IDFor $one}}{{if eq $i 0}} {{$name}} = iota{{end}}
+	{{- end}}
+)
+
+// Last{{$name}} is the last valid value.
+const Last{{$name}} {{$name}} = {{$info.IDFor (last .Values)}}
+
+{{wrapComment (printf "%ss holds all possible values." $name) 116}}
+var {{$name}}s = []{{$name}}{
+    {{- range .Values}}
+    {{$info.IDFor .}},
+    {{- end}}
+}
+
+{{wrapComment (printf "%s %s." $name .Desc) 120}}
+type {{$name}} byte
+
+// EnsureValid ensures this is of a known value.
+func (enum {{$name}}) EnsureValid() {{$name}} {
+	if enum <= {{.IDFor (last .Values)}} {
+		return enum
+	}
+	return 0
+}
+
+// Key returns the key used in serialization.
+func (enum {{$name}}) Key() string {
+    switch enum {
+    {{- range .Values}}
+    case {{$info.IDFor .}}:
+        return "{{.Key}}"
+    {{- end}}
+    default:
+        return {{$name}}(0).Key()
+    }
+}
+
+{{if .HasOldKeys -}}
+func (enum {{$name}}) oldKeys() []string {
+    switch enum {
+    {{- range .Values}}
+    case {{$info.IDFor .}}:
+        return {{if .OldKeys}}[]string{ {{join .OldKeys}} }{{else}}nil{{end}}
+    {{- end}}
+    default:
+        return {{$name}}(0).oldKeys()
+    }
+}
+{{- end}}
+
+// String implements fmt.Stringer.
+func (enum {{$name}}) String() string {
+    switch enum {
+    {{- range .Values}}
+    case {{$info.IDFor .}}:
+        return {{if not .NoLocalize}}i18n.Text({{end}}{{printf "%q" .StringValue}}{{if not .NoLocalize}}){{end}}
+    {{- end}}
+    default:
+        return {{$name}}(0).String()
+    }
+}
+
+{{if .HasAlt -}}
+// AltString returns the alternate string.
+func (enum {{$name}}) AltString() string {
+    switch enum {
+    {{- range .Values}}
+    case {{$info.IDFor .}}:
+        return {{if not .NoLocalizeAlt}}i18n.Text({{end}}{{printf "%q" .Alt}}{{if not .NoLocalizeAlt}}){{end}}
+    {{- end}}
+    default:
+        return {{$name}}(0).AltString()
+    }
+}
+{{- end}}
+
+// MarshalText implements the encoding.TextMarshaler interface.
+func (enum {{$name}}) MarshalText() (text []byte, err error) {
+    return []byte(enum.Key()), nil
+}
+
+// UnmarshalText implements the encoding.TextUnmarshaler interface.
+func (enum *{{$name}}) UnmarshalText(text []byte) error {
+    *enum = Extract{{$name}}(string(text))
+    return nil
+}
+
+{{wrapComment (printf "Extract%s extracts the value from a string." $name) 120}}
+func Extract{{$name}}(str string) {{$name}} {
+{{- if and (eq .Name "size") (eq .Pkg "model/paper")}}
+	str = strings.TrimPrefix(strings.TrimPrefix(str, "na-"), "iso-") // For older files that had the Java prefixes
+{{- end}}
+    for _, enum := range {{$name}}s {
+        if strings.EqualFold(enum.Key(), str){{if .HasOldKeys}} || txt.CaselessSliceContains(enum.oldKeys(), str){{end}} {
+            return enum
+        }
+    }
+    return 0
+}
